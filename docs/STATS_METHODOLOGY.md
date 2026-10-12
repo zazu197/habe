@@ -1,0 +1,15 @@
+# Statistics methodology
+
+Measured listening time and counted plays are separate. Samples arrive about once per second. The companion compares monotonic elapsed time with playback position delta and playback rate. It accepts only actively playing intervals with positive progress and less than 1.5 seconds of discrepancy. Gaps above 15 seconds, stalls, seeks, duplicate zero-delta events, and paused intervals add no time. One interval around a pause/seek may be lost; that is safer than crediting unobserved listening. Remote-device output is not proof that the listener physically heard it.
+
+A qualified local play requires at least 30 seconds and at least half the known track duration, with the half-duration threshold capped at four minutes. Unknown duration does not qualify a local play. Short skips can still contribute measured time. Replays detected at a track-end reset create separate sessions. This is Riffify's independent rule, not Spotify's official reporting convention.
+
+Last.fm timestamped scrobbles are verified records from the configured account. Now-playing rows without a completed timestamp are excluded. Identical account/timestamp/artist/title rows deduplicate; the same song at another timestamp remains a separate record. Track edition text is preserved. Corrections that materially change names without stable identifiers can create a separate record; further identifier-based correction reconciliation is required.
+
+Local and Last.fm records match only when artist/title comparison keys agree, start timestamps fall within 90 seconds, there is one available local candidate, and no competing nearby scrobble. Ambiguous evidence remains separate. A matched local qualified play and scrobble count as one listen with two sources. Unmatched scrobbles do not inherit Spotify attribution.
+
+Calendar filters use the selected IANA timezone and calendar midnight. Weeks use ISO Monday through Sunday. DST days can contain 23 or 25 hours. Last 7/30 days are rolling durations and are explicitly separate choices. Measured intervals are clipped and split at local day boundaries. Completed local plays are attributed to their session start date.
+
+Historical duration is currently unknown when no trustworthy matching duration is available; the build reports missing-duration coverage and does not multiply scrobbles by an invented average. Current rankings by time use measured local intervals only. Historical Last.fm rankings by plays remain meaningful after import. Genre, playlist/context duration, first-discovery, streak, comparison, and longest-session metrics require additional implementation and validation; do not infer those values from current charts.
+
+The ledger uses SQLite WAL and a schema version, but automatic database backup rotation and user-supplied extended streaming-history reconciliation are not implemented. Export JSON before upgrades. All-time queries use indexed period selection and map lookups rather than quadratic matching, but large history performance has not been benchmarked.

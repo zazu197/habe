@@ -1,0 +1,2 @@
+#riffify-frame { position:fixed; inset:32px 0 0; width:100%; height:calc(100% - 32px); border:0; z-index:10000; background:#141218; }
+body.riffify-active .Root__top-container { visibility:hidden; }

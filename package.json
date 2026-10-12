@@ -1,0 +1,14 @@
+{
+  "name": "riffify", "version": "0.1.0", "private": true,
+  "description": "The original Riff UI in Spotify, with local listening history",
+  "license": "MIT", "engines": { "node": ">=22.11.0" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --experimental-sqlite --test tests/*.test.mjs",
+    "start": "node --experimental-sqlite companion/server.mjs",
+    "install:spotify": "node --experimental-sqlite scripts/install.mjs",
+    "uninstall:spotify": "node --experimental-sqlite scripts/install.mjs --uninstall",
+    "check": "node scripts/check.mjs"
+    ,"setup:media": "node scripts/setup-media.mjs"
+  }
+}
