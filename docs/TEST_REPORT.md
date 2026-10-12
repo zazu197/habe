@@ -10,7 +10,8 @@ Date: 2026-10-12. Windows x64; Node 22.11.0; Spotify 1.3.4.258.gc60b10b0946a; Sp
 - Actual Windows spicetify backup apply and later apply completed. Current Apps/config rollback copies remain outside Git.
 - Actual Spotify displayed original Riff and real account liked songs/playlists.
 - Headless Edge fixture: authentic generated UI boot, Spotify first, original carousel, library, search, native URI command, artist detail without YouTube substitution, toggle, Stats and settings.
-- Original-versus-ported settings fixture at 1920x1080 reaches SSIM approximately 0.999. See screenshots/visual-comparison.json, reference/settings PNGs, overlay and difference. Gaussian window 11, sigma 1.5; crop (112,104,1548,958). Excludes native chrome/provider/new sidebar/player/right lyrics. This is one stable fixture region, not complete native parity.
+- Earlier settings baseline at cdc87cf reached SSIM approximately 0.999. The current settings fixture is 0.857 after the requested Spotify-interface setting shifts existing rows. This crop includes that intentional difference and no longer passes the 0.98 target. See screenshots/visual-comparison.json, reference/settings PNGs, overlay and difference. Gaussian window 11, sigma 1.5; crop (112,104,1548,958). Excludes native chrome/provider/new sidebar/player/right lyrics. Neither result establishes complete native parity.
+- Follow-up UI regression checks verify play-button containment and visible SoundCloud bounds at 1920/1600/1280/1024/800/600 pixels, collapsed history tools, populated/empty Wrapped, recap navigation, PNG download and Settings → Interface → Show Spotify UI dispatching native navigation. All account/history data in these checks is synthetic and confined to temporary test storage.
 - Actual public YouTube metadata enumeration returned 49 available formats (37 video, 12 audio). No media downloaded.
 
 ## Not established

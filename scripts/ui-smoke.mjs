@@ -21,7 +21,7 @@ window.fixtureCalls=[];
 const item={uri:'spotify:track:0123456789012345678901',metadata:{title:'Fixture track',artist_name:'Fixture artist',artist_uri:'spotify:artist:1123456789012345678901',album_title:'Fixture album',duration:'120000'}};
 window.RiffifyConnection=${JSON.stringify({origin,token:config.token})};
 window.Spicetify={Player:{origin:{},data:null,getProgress:()=>0,getDuration:()=>120000,getVolume:()=>.5,getShuffle:()=>false,getRepeat:()=>0,
-playUri:async uri=>{fixtureCalls.push(['play',uri]);Spicetify.Player.data={item:{...item,uri},isPaused:false};},pause:()=>{fixtureCalls.push(['pause']);if(Spicetify.Player.data)Spicetify.Player.data.isPaused=true;},togglePlay:()=>{fixtureCalls.push(['toggle']);Spicetify.Player.data.isPaused=!Spicetify.Player.data.isPaused;},next:()=>fixtureCalls.push(['next']),back:()=>fixtureCalls.push(['previous']),seek:x=>fixtureCalls.push(['seek',x]),setVolume:x=>fixtureCalls.push(['volume',x]),setShuffle:x=>fixtureCalls.push(['shuffle',x]),setRepeat:x=>fixtureCalls.push(['repeat',x]),addEventListener:()=>{},removeEventListener:()=>{}},Platform:{History:{push:()=>{}},LibraryAPI:{getTracks:async()=>({items:[item]}),contains:async()=>[false],add:async()=>{},remove:async()=>{}},RootlistAPI:{getContents:async()=>({items:[{type:'playlist',name:'Fixture playlist',uri:'spotify:playlist:0123456789012345678901'}]})},PlaylistAPI:{getContents:async()=>({items:[item]})}},CosmosAsync:{get:async url=>url.includes('/top-tracks')?{tracks:[item]}:url.includes('/v1/artists/')?{name:'Fixture artist',images:[],genres:['Fixture genre']}:url.includes('/search')?{tracks:{items:[item]}}:{lyrics:{syncType:'LINE_SYNCED',lines:[{startTimeMs:'0',words:'Fixture lyric'}]}}}};
+playUri:async uri=>{fixtureCalls.push(['play',uri]);Spicetify.Player.data={item:{...item,uri},isPaused:false};},pause:()=>{fixtureCalls.push(['pause']);if(Spicetify.Player.data)Spicetify.Player.data.isPaused=true;},togglePlay:()=>{fixtureCalls.push(['toggle']);Spicetify.Player.data.isPaused=!Spicetify.Player.data.isPaused;},next:()=>fixtureCalls.push(['next']),back:()=>fixtureCalls.push(['previous']),seek:x=>fixtureCalls.push(['seek',x]),setVolume:x=>fixtureCalls.push(['volume',x]),setShuffle:x=>fixtureCalls.push(['shuffle',x]),setRepeat:x=>fixtureCalls.push(['repeat',x]),addEventListener:()=>{},removeEventListener:()=>{}},Platform:{History:{push:uri=>fixtureCalls.push(["navigate",uri])},LibraryAPI:{getTracks:async()=>({items:[item]}),contains:async()=>[false],add:async()=>{},remove:async()=>{}},RootlistAPI:{getContents:async()=>({items:[{type:'playlist',name:'Fixture playlist',uri:'spotify:playlist:0123456789012345678901'}]})},PlaylistAPI:{getContents:async()=>({items:[item]})}},CosmosAsync:{get:async url=>url.includes('/top-tracks')?{tracks:[item]}:url.includes('/v1/artists/')?{name:'Fixture artist',images:[],genres:['Fixture genre']}:url.includes('/search')?{tracks:{items:[item]}}:{lyrics:{syncType:'LINE_SYNCED',lines:[{startTimeMs:'0',words:'Fixture lyric'}]}}}};
 </script><iframe id="fixture-frame" src="${origin}/session/${config.token}/ui/"></iframe><script>window.RiffifyFrame=document.getElementById('fixture-frame');${bridge}</script>`;
 await page.route('https://xpui.app.spotify.com/harness',route=>route.fulfill({contentType:'text/html',body:harness}));
 try {
@@ -30,6 +30,19 @@ try {
   await frame.locator('#platform-spotify.active').waitFor();
   await frame.getByText('Fixture playlist',{exact:true}).waitFor();
   await page.waitForTimeout(600);
+  async function checkLayout(width) {
+    await page.setViewportSize({width,height:900});await page.waitForTimeout(450);
+    const result=await frame.locator('body').evaluate(()=>{
+      const bounds=node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};};
+      const play=bounds(document.querySelector('#btn-play-pause')),bar=bounds(document.querySelector('.playbar')),provider=bounds(document.querySelector('#platform-sc')),pill=bounds(document.querySelector('.platform-switch-container'));
+      return {play,bar,provider,pill,width:innerWidth,exitVisible:!!document.querySelector('.riffify-exit'),controlsVisible:getComputedStyle(document.querySelector('.titlebar-controls')).display!=='none'};
+    });
+    if(result.play.top<result.bar.top+3||result.play.bottom>result.bar.bottom-3)throw new Error(`Play button clipping at ${width}: ${JSON.stringify(result)}`);
+    if(result.provider.right>Math.min(result.width,result.pill.right)+1||result.provider.left<result.pill.left-1)throw new Error(`Provider clipping at ${width}: ${JSON.stringify(result)}`);
+    if(result.exitVisible||result.controlsVisible)throw new Error('Duplicate exit/window controls remain');
+  }
+  for(const width of [1920,1600,1280,1024,800,600])await checkLayout(width);
+  await page.setViewportSize({width:1920,height:1080});await page.waitForTimeout(450);
   if(await frame.locator('#home-vibe-grid .my-wave-track-card').count()!==1)throw new Error('Original carousel renderer missing');
   mkdirSync('docs/screenshots',{recursive:true});
   await page.screenshot({path:'docs/screenshots/fixture-shell-1920.png'});
@@ -41,9 +54,39 @@ try {
   await frame.locator('#btn-play-pause').click();
   await page.waitForFunction(()=>fixtureCalls.some(x=>x[0]==='toggle'));
   await frame.getByRole('button',{name:'Stats / Wrapped',exact:true}).click();
+  await frame.locator('.wrapped-hero').waitFor();
+  await frame.getByRole('button',{name:'Connect Last.fm',exact:true}).click();
   await frame.getByText('Connect Last.fm history',{exact:true}).waitFor();
+  await frame.locator('.wrapped-tools summary').click();
+  await frame.locator('.riffify-panel').evaluate(node=>node.scrollTop=0);
   await page.waitForTimeout(600);
+  await page.screenshot({path:'docs/screenshots/fixture-wrapped-empty-1920.png'});
+  app.ledger.clear();
+  const wall=Date.now()-3600000;let mono=0;
+  for(let index=0;index<6;index++){
+    const track={id:`spotify:track:${String(index).padStart(22,'0')}`,platform:'spotify',title:['Midnight Lines','Soft Focus','Slow Orbit'][index%3],artist:['Fixture artist','Fixture ensemble','Fixture duo'][index%3],album:'Fixture album',duration:120};
+    for(let step=0;step<=6;step++){app.ledger.sample({track,position:step*15000,playing:true,context:'Fixture playlist'},mono,wall+mono);mono+=15000;}
+  }
+  const names=['Midnight Lines','Soft Focus','Slow Orbit','Glass Gardens','Afterlight'];
+  app.ledger.importScrobbles('zazafent',Array.from({length:30},(_,index)=>({name:names[index%names.length],artist:{'#text':['Fixture artist','Fixture ensemble','Fixture duo'][index%3]},album:{'#text':'Fixture album'},date:{uts:String(Math.floor(Date.now()/1000)-index*7200)}})),'synthetic-ui-fixture');
+  await frame.getByRole('combobox',{name:'Period',exact:true}).selectOption('all');
+  await frame.getByText('Your top artists',{exact:true}).waitFor();
+  await frame.locator('.riffify-panel').evaluate(node=>node.scrollTop=0);
+  await page.waitForTimeout(600);
+  if(await frame.locator('.wrapped-time strong').textContent()!=='9m')throw new Error('Wrapped measured time differs from fixture ledger');
   await page.screenshot({path:'docs/screenshots/fixture-wrapped-1920.png'});
+  await frame.getByRole('button',{name:'View your recap',exact:true}).click();
+  await frame.locator('.wrapped-story').getByRole('button',{name:'Next',exact:true}).click();
+  if(!await frame.locator('.wrapped-story').textContent().then(text=>text.includes('Your #1 artist')))throw new Error('Recap navigation failed');
+  await frame.getByRole('button',{name:'Close recap',exact:true}).click();
+  const download=page.waitForEvent('download');await frame.getByRole('button',{name:'Save recap PNG',exact:true}).click();if((await download).suggestedFilename()!=='riff-wrapped.png')throw new Error('PNG export failed');
+  for(const width of [1280,800,600]){
+    await checkLayout(width);await frame.locator('.riffify-panel').evaluate(node=>node.scrollTop=0);
+    const contained=await frame.locator('.riffify-panel').evaluate(node=>node.scrollWidth<=node.clientWidth+1);
+    if(!contained)throw new Error(`Wrapped overflows at ${width}`);
+    await page.screenshot({path:`docs/screenshots/fixture-wrapped-${width}.png`});
+  }
+  await page.setViewportSize({width:1920,height:1080});await page.waitForTimeout(450);
   await frame.locator('.riffify-panel-header button').click();
   await frame.locator('#nav-settings').click();
   await page.waitForTimeout(600);
@@ -59,6 +102,9 @@ try {
   await reference.goto('https://xpui.app.spotify.com/reference');const ref=reference.frameLocator('#reference');await ref.locator('#nav-settings').waitFor();await ref.locator('#search-input').fill('Fixture');await reference.waitForTimeout(1000);await ref.locator('#nav-settings').click();await reference.waitForTimeout(700);await ref.locator('body').evaluate(async()=>{await document.fonts.ready;});
   await reference.screenshot({path:'docs/screenshots/reference-settings-1920.png'});
   await reference.close();
+  await frame.locator('.settings-nav-btn[data-cat="interface"]').click();
+  await frame.getByRole('button',{name:'Show Spotify UI',exact:true}).click();
+  await page.waitForFunction(()=>fixtureCalls.some(call=>call[0]==='navigate'&&call[1]==='/'));
   if(errors.length)throw new Error(errors.join('\n'));
   const calls=await page.evaluate(()=>fixtureCalls);
   writeFileSync('docs/screenshots/fixture-test.json',JSON.stringify({kind:'headless fixture contract; not native Spotify verification',viewport:'1920x1080',errors,calls},null,2));

@@ -94,73 +94,155 @@
     const panel = document.createElement('div'); panel.className = 'riffify-panel hidden'; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Riffify statistics and downloads');
     document.body.append(panel);
     let view = null, poll = null, recapIndex = 0;
-    function open(title) { panel.classList.remove('hidden'); panel.replaceChildren(); const header = document.createElement('header'); header.className = 'riffify-panel-header'; const h = document.createElement('h2'); h.textContent = title; header.append(h); const close = document.createElement('button'); close.className = 'btn-outline-pill'; close.textContent = 'Close'; close.onclick = () => { panel.classList.add('hidden'); clearInterval(poll); poll = null; }; header.append(close); panel.append(header); return panel; }
+    function open(title) { clearInterval(poll); poll=null;panel.classList.remove('hidden','riffify-wrapped'); panel.replaceChildren(); const header = document.createElement('header'); header.className = 'riffify-panel-header'; const h = document.createElement('h2'); h.textContent = title; header.append(h); const close = document.createElement('button'); close.className = 'btn-outline-pill'; close.textContent = 'Close'; close.onclick = () => { panel.classList.add('hidden');view=null; clearInterval(poll); poll = null; }; header.append(close); panel.append(header); return panel; }
     function element(tag, text, parent, cls = '') { const node = document.createElement(tag); if (text != null) node.textContent = text; node.className = cls; parent?.append(node); return node; }
     function button(text, parent, fn) { const b = element('button', text, parent, 'btn-outline-pill'); b.onclick = async () => { try { await fn(); } catch (e) { showToast(e.message, 'error'); } }; return b; }
     function input(label, parent, type = 'text', value = '') { const wrap = element('label', label, parent, 'riffify-field'); const node = document.createElement('input'); node.type = type; node.value = value; wrap.append(node); return node; }
+    const spotifySetting = element('div', null, null, 'setting-item');
+    const spotifySettingTop = element('div', null, spotifySetting, 'setting-item-top');
+    element('span', 'Spotify interface', spotifySettingTop, 'setting-name');
+    const spotifyButton = button('Show Spotify UI', spotifySettingTop, () => call('exit'));
+    spotifyButton.id = 'btn-show-spotify-ui';
+    element('p', 'Leave Riffify and return to Spotify. Reopen Riffify from the sidebar.', spotifySetting, 'setting-hints');
+    document.querySelector('.settings-section[data-cat="interface"] .m3-group')?.prepend(spotifySetting);
     async function stats() {
-      view = 'stats'; open('Riff Wrapped · unofficial personal stats');
-      const controls = element('div', null, panel, 'riffify-controls');
-      const select = (values, selected) => { const s = element('select', null, controls); for (const [value, text] of values) { const option = element('option', text, s); option.value = value; } s.value = selected; return s; };
-      const period = select([['today','Today'],['yesterday','Yesterday'],['week','This week'],['lastweek','Last week'],['7days','Last 7 days'],['30days','Last 30 days'],['month','This month'],['year','This year'],['all','All time'],['custom','Custom range']], 'week');
-      const scope = select([['all','All Sources'],['spotify','Spotify only']], 'all');
-      const rank = select([['plays','Rank by plays'],['time','Rank by measured time']], 'plays');
+      view = 'stats'; open('Riff Wrapped'); panel.classList.add('riffify-wrapped');
+      element('p', 'Your music, in perspective. Unofficial personal stats.', panel.querySelector('header'), 'wrapped-subtitle');
       const config = await riffifyApi('config');
-      const zone = input('Timezone', controls, 'text', config.timezone);
-      const from = input('From', controls, 'date'); const to = input('To', controls, 'date');
-      const summary = element('div', null, panel, 'riffify-metrics'), coverage = element('p', null, panel), charts = element('div', null, panel, 'riffify-charts');
-      let current = null, version = 0;
+      const toolbar = element('div', null, panel, 'wrapped-toolbar');
+      const select = (label, values, selected) => {
+        const wrap = element('label', label, toolbar, 'wrapped-filter');
+        const control = element('select', null, wrap); control.setAttribute('aria-label', label);
+        for (const [value, text] of values) { const option = element('option', text, control); option.value = value; }
+        control.value = selected; return control;
+      };
+      const period = select('Period', [['today','Today'],['yesterday','Yesterday'],['week','This week'],['lastweek','Last week'],['7days','Last 7 days'],['30days','Last 30 days'],['month','This month'],['year','This year'],['all','All time'],['custom','Custom range']], 'week');
+      const scope = select('Sources', [['all','All Sources'],['spotify','Spotify only']], 'all');
+      const rank = select('Rank by', [['plays','Counted listens'],['time','Measured time']], 'plays');
+      const range = element('div', null, toolbar, 'wrapped-custom-range hidden');
+      const from = input('From', range, 'date'), to = input('To', range, 'date');
+      const hero = element('section', null, panel, 'wrapped-hero');
+      const summary = element('div', null, panel, 'wrapped-summary');
+      const coverage = element('p', null, panel, 'wrapped-coverage');
+      const charts = element('div', null, panel, 'wrapped-grid');
+      let current = null, version = 0, recap = null, loading = false;
+      const readableTime = ms => { const minutes = Math.floor(ms / 60000); return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${(ms / 60000).toFixed(ms > 0 && ms < 60000 ? 1 : 0)}m`; };
+      const count = value => Number(value || 0).toLocaleString();
+      const tools = element('details', null, panel, 'wrapped-tools');
+      element('summary', 'History & settings', tools);
+      const setup = element('section', null, tools, 'wrapped-setup');
+      element('h3', 'Connect Last.fm history', setup);
+      element('p', 'Bring your past listening into view. Read-only sync; your API key stays on this computer.', setup);
+      const setupControls = element('div', null, setup, 'riffify-controls');
+      const username = input('Last.fm username', setupControls, 'text', config.username);
+      const key = input(config.hasKey ? 'API key saved · leave empty to keep' : 'Last.fm API key', setupControls, 'password');
+      const zone = input('Timezone', setupControls, 'text', config.timezone);
+      const profile = element('a', 'Create an API key', setup); profile.href = 'https://www.last.fm/api/account/create'; profile.target = '_blank'; profile.rel = 'noreferrer noopener';
+      const account = element('a', `View ${config.username} on Last.fm`, setup); account.href = `https://www.last.fm/user/${encodeURIComponent(config.username)}`; account.target = '_blank'; account.rel = 'noreferrer noopener';
+      const status = element('p', config.hasKey ? 'Ready to sync.' : 'No API key connected yet.', setup, 'wrapped-sync-status'); status.setAttribute('role', 'status');
       const refresh = async () => {
         const request = ++version;
-        const query = new URLSearchParams({ period: period.value, scope: scope.value, rank: rank.value, timezone: zone.value, from: from.value, to: to.value });
-        const data = await riffifyApi(`stats?${query}`); if (request !== version || view !== 'stats') return; current = data;
-        summary.replaceChildren(); for (const [label, value] of [['Measured listening time', `${(data.measured / 60000).toFixed(1)} min`], ['Verified Last.fm scrobbles', data.scrobbles], ['Qualified plays / scrobbles', data.plays], ['Estimated historical time', data.estimated===null?'Unknown — resolve duration metadata':`${(data.estimated/60000).toFixed(1)} min (${data.missingDurations} unknown)`],['Unique tracks / artists / albums',`${data.uniqueTracks} / ${data.uniqueArtists} / ${data.uniqueAlbums}`],['Active days / longest streak',`${data.activeDays} / ${data.longestStreak} days`],['Longest measured session',`${(data.longestSession/60000).toFixed(1)} min`],['First recorded artists',data.firstRecordedArtists]]) { const card = element('div', null, summary, 'riffify-card'); element('span', label, card); element('strong', String(value), card); }
-        coverage.textContent = `Last.fm history since ${data.coverage.earliest ? new Date(data.coverage.earliest).toLocaleDateString() : 'not imported'} · ${data.coverage.imported} imported · Last synced ${data.sync?.syncedAt ? new Date(data.sync.syncedAt).toLocaleString() : 'never'} · ${data.sync?.complete ? 'Backfill completed' : 'Partial coverage'} · Unmatched Last.fm provider unknown`;
-        charts.replaceChildren();
-        for (const [title, rows] of [['Top artists', data.artists], ['Top tracks', data.tracks], ['Top albums', data.albums], ['Top playback contexts',data.contexts], ['Sources', data.providers]]) {
-          const card = element('section', null, charts, 'riffify-card'); element('h3', title, card);
-          if (!rows.length) element('p', 'No records for this period. Import history or listen with tracking enabled.', card);
-          const maximum = Math.max(1, ...rows.map(x => rank.value === 'time' ? x.measured : x.plays));
-          rows.slice(0, 10).forEach((row, i) => { const line = element('div', null, card, 'riffify-ranking'); line.style.animationDelay = `${i * 40}ms`; element('span', row.name, line); element('span', rank.value === 'time' ? `${(row.measured / 60000).toFixed(1)} min` : `${row.plays} plays`, line); const bar = element('i', null, line); bar.style.width = `${100 * (rank.value === 'time' ? row.measured : row.plays) / maximum}%`; });
+        range.classList.toggle('hidden', period.value !== 'custom');
+        if (period.value === 'custom' && (!from.value || !to.value)) return;
+        const query = new URLSearchParams({period:period.value, scope:scope.value, rank:rank.value, timezone:zone.value, from:from.value, to:to.value});
+        const data = await riffifyApi(`stats?${query}`);
+        if (request !== version || view !== 'stats' || panel.classList.contains('hidden')) return;
+        current = data;
+        hero.replaceChildren();
+        const main = element('div', null, hero, 'wrapped-hero-main');
+        element('span', period.selectedOptions[0].textContent.toUpperCase(), main, 'wrapped-eyebrow');
+        const time = element('div', null, main, 'wrapped-time'); element('strong', readableTime(data.measured), time);
+        element('p', 'Measured listening time', main, 'wrapped-time-label');
+        element('p', data.plays || data.measured ? `${count(data.plays)} counted listens. ${count(data.activeDays)} active days. A little more of what you love.` : 'Your story starts with a listen.', main, 'wrapped-hero-description');
+        const heroActions = element('div', null, main, 'wrapped-hero-actions');
+        const recapButton = button('View your recap', heroActions, showRecap); recapButton.disabled = !data.plays && !data.measured;
+        if (!config.hasKey) button('Connect Last.fm', heroActions, () => { tools.open = true; setup.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'}); key.focus({preventScroll:true}); });
+        const spotlight = element('div', null, hero, 'wrapped-spotlights');
+        for (const [label, name, value] of [['TOP ARTIST', data.artists[0]?.name, data.artists[0]?.plays], ['ON REPEAT', data.tracks[0]?.name, data.tracks[0]?.plays]]) {
+          const card = element('div', null, spotlight, 'wrapped-spotlight'); element('span', label, card, 'wrapped-eyebrow');
+          element('h3', name || 'Still to discover', card); element('p', name ? `${count(value)} counted listens` : 'Listen or sync history to reveal yours.', card);
         }
-        const activity = element('section', null, charts, 'riffify-card'); element('h3', 'Listening activity · measured time / scrobbles', activity); const row = element('div', null, activity, 'riffify-activity');
-        for (const day of data.daily.slice(-180)) { const bar = element('div', null, row); bar.title = `${day.date}: ${(day.measured / 60000).toFixed(1)} min / ${day.plays} counted listens`; bar.style.height = `${Math.max(5, Math.min(100, day.measured / 60000 + day.plays))}px`; element('span', day.date.slice(5), bar); }
-        if(data.daily.length>180)element('p','Chart shows the last 180 active dates; totals include the full selected period.',activity);
-        const hourly=element('section',null,charts,'riffify-card');element('h3','Hour of day · measured time / scrobble timestamps',hourly);const hourRow=element('div',null,hourly,'riffify-activity');
-        const hourValues=rank.value==='time'?data.hours.map(ms=>ms/60000):data.hourlyScrobbles,maximum=Math.max(1,...hourValues);
-        hourValues.forEach((value,hour)=>{const bar=element('div',null,hourRow);bar.title=`${hour}:00 · ${(data.hours[hour]/60000).toFixed(1)} measured min / ${data.hourlyScrobbles[hour]} scrobbles`;bar.style.height=`${Math.max(3,100*value/maximum)}px`;element('span',String(hour),bar);});
-        element('p',`Average per active day: ${(data.averageDailyMeasured/60000).toFixed(1)} measured min · Peak day: ${data.peakDay?.date||'Unknown'} · Previous equal-length period: ${data.previousScrobbles??'Unavailable for Spotify scope'} scrobbles · Genres: ${data.genres}`,panel);
+        summary.replaceChildren();
+        for (const [label, value, note] of [['Counted listens',count(data.plays),`${count(data.scrobbles)} verified Last.fm scrobbles`],['Artists in rotation',count(data.uniqueArtists),`${count(data.uniqueTracks)} tracks · ${count(data.uniqueAlbums)} albums`],['Longest streak',`${count(data.longestStreak)} days`,`${count(data.activeDays)} active days in this period`],['Historical estimate',data.estimated===null?'Not available':readableTime(data.estimated),data.estimated===null?'Resolve duration metadata after syncing.':`${count(data.missingDurations)} scrobbles have unknown duration`]]) {
+          const card = element('div', null, summary, 'wrapped-stat'); element('span', label, card); element('strong', value, card); element('small', note, card);
+        }
+        coverage.textContent = data.coverage.imported ? `${count(data.coverage.imported)} scrobbles imported · history since ${new Date(data.coverage.earliest).toLocaleDateString()} · ${data.sync?.complete?'Backfill complete':'Partial coverage'} · Last sync ${data.sync?.syncedAt?new Date(data.sync.syncedAt).toLocaleString():'not completed'}` : 'Private by default. Listen with tracking enabled, or connect Last.fm to bring in your history.';
+        charts.replaceChildren();
+        const ranking = (title, rows, cls = '') => {
+          const card = element('section', null, charts, `wrapped-chart ${cls}`); element('h3', title, card);
+          const maximum = Math.max(1, ...rows.map(row => rank.value === 'time' ? row.measured : row.plays));
+          rows.slice(0,5).forEach((row,index) => {
+            const line = element('div', null, card, 'wrapped-ranking'); line.style.setProperty('--row',index);
+            element('span', String(index + 1).padStart(2,'0'), line, 'wrapped-rank');
+            const name = element('div', null, line, 'wrapped-rank-name'); element('span', row.name, name);
+            const track = element('div', null, name, 'wrapped-rank-track'); const fill = element('i', null, track); fill.style.width = `${100 * (rank.value === 'time' ? row.measured : row.plays) / maximum}%`;
+            element('strong', rank.value === 'time' ? readableTime(row.measured) : count(row.plays), line, 'wrapped-rank-value');
+          }); return card;
+        };
+        if (data.artists.length || data.tracks.length) { ranking('Your top artists',data.artists,'wrapped-half'); ranking('Tracks you come back to',data.tracks,'wrapped-half'); }
+        else {
+          const empty = element('section', null, charts, 'wrapped-empty'); element('span','♪',empty,'wrapped-empty-symbol');
+          element('h3','Make room for your music.',empty); element('p','Your artists, favorite tracks and listening patterns will appear here as real records arrive.',empty);
+        }
+        if (data.daily.length) {
+          const activity = element('section', null, charts, 'wrapped-chart wrapped-activity-card'); element('h3','Your listening rhythm',activity);
+          element('p',rank.value==='time'?'Measured minutes per active date':'Counted listens per active date',activity,'wrapped-chart-note');
+          const row = element('div',null,activity,'riffify-activity'); const days = data.daily.slice(-90);
+          const values = days.map(day => rank.value==='time'?day.measured/60000:day.plays), maximum = Math.max(1,...values);
+          days.forEach((day,index)=>{const bar=element('div',null,row);bar.title=`${day.date}: ${readableTime(day.measured)} measured · ${day.plays} counted listens`;bar.style.height=`${Math.max(3,100*values[index]/maximum)}px`;element('span',day.date.slice(5),bar);});
+          if(data.daily.length>90)element('p','Last 90 active dates shown; totals include the full period.',activity,'wrapped-chart-note');
+          const hourly=element('section',null,charts,'wrapped-chart wrapped-hours-card');element('h3','When you tune in',hourly);element('p','Scrobble timestamps / measured time',hourly,'wrapped-chart-note');
+          const hourRow=element('div',null,hourly,'riffify-activity wrapped-hours');const hourValues=rank.value==='time'?data.hours.map(ms=>ms/60000):data.hourlyScrobbles, maxHour=Math.max(1,...hourValues);
+          hourValues.forEach((value,hour)=>{const bar=element('div',null,hourRow);bar.title=`${hour}:00 · ${readableTime(data.hours[hour])} measured · ${data.hourlyScrobbles[hour]} scrobbles`;bar.style.height=`${Math.max(3,100*value/maxHour)}px`;if(hour%6===0)element('span',`${hour}:00`,bar);});
+        }
+        for(const [title,rows] of [['Albums',data.albums],['Playback contexts',data.contexts],['Sources',data.providers]])if(rows.length)ranking(title,rows,'wrapped-third');
+        const details=element('details',null,charts,'wrapped-methodology');element('summary','Behind the numbers',details);
+        element('p',`Measured time comes from validated playback intervals. Historical estimates use known track durations, not exact past listening. Unmatched Last.fm provider is unknown. First recorded artists: ${data.firstRecordedArtists}. Longest measured session: ${readableTime(data.longestSession)}. Average per active day: ${readableTime(data.averageDailyMeasured)}. Peak date: ${data.peakDay?.date||'not available'}. Previous equal-length period: ${data.previousScrobbles??'unavailable for Spotify scope'} scrobbles. Genre: ${data.genres}.`,details);
       };
-      for (const control of [period, scope, rank, zone, from, to]) control.onchange = () => refresh().catch(e => showToast(e.message, 'error'));
-      const actions = element('div', null, panel, 'riffify-controls');
-      button('Refresh', actions, refresh);
-      button('Browse recap', actions, () => {
-        if (!current || !current.plays && !current.measured) throw new Error('No recorded listening for this period');
-        const cards = [`${current.period}: ${(current.measured / 3600000).toFixed(2)} measured hours`, `Your #1 artist: ${current.artists[0]?.name || 'Unknown'}`, `On repeat: ${current.tracks[0]?.name || 'Unknown'}`, `Top five: ${current.artists.slice(0, 5).map(x => x.name).join(', ')}`, `${current.activeDays} active recorded days`, `${current.scrobbles} verified scrobbles`, `Sources: ${current.providers.map(x => x.name).join(', ')}`, 'Riff Wrapped · unofficial personal stats'];
-        const overlay = element('div', null, panel, 'riffify-card riffify-recap'); const text = element('h2', cards[recapIndex % cards.length], overlay);
-        button('Previous', overlay, () => { recapIndex = (recapIndex + cards.length - 1) % cards.length; text.textContent = cards[recapIndex]; }); button('Next', overlay, () => { recapIndex = (recapIndex + 1) % cards.length; text.textContent = cards[recapIndex]; }); button('Close recap', overlay, () => overlay.remove());
-      });
-      button('Save recap PNG', actions, () => {
-        if (!current) return; const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 800; const context = canvas.getContext('2d'); const style = getComputedStyle(document.body); context.fillStyle = style.getPropertyValue('--md-sys-color-surface').trim() || '#141218'; context.fillRect(0, 0, 1200, 800); context.fillStyle = style.getPropertyValue('--md-sys-color-primary').trim() || '#d0bcff'; context.font = '48px "Google Sans",sans-serif'; context.fillText('Riff Wrapped', 80, 110); context.font = '26px "Google Sans",sans-serif'; const lines = [current.period, `${(current.measured / 60000).toFixed(1)} measured minutes`, `${current.scrobbles} verified Last.fm scrobbles`, ...current.artists.slice(0,5).map((x,i) => `${i+1}. ${x.name} — ${x.plays} plays`), 'Unofficial personal stats · Historical durations unknown']; lines.forEach((line,i) => context.fillText(line.slice(0, 75), 80, 180 + i * 55)); canvas.toBlob(blob => saveBlob(blob, 'riff-wrapped.png'));
-      });
-      button(config.tracking ? 'Pause tracking' : 'Resume tracking', actions, async () => { await riffifyApi('config', { tracking: !config.tracking }); await stats(); });
-      button('Export JSON', actions, async () => saveBlob(new Blob([JSON.stringify(await riffifyApi('export'), null, 2)], { type: 'application/json' }), 'riffify-history.json'));
+      function showRecap() {
+        if(!current || !current.plays && !current.measured)throw new Error('No recorded listening for this period');
+        recap?.remove();recapIndex=0;
+        const cards=[['Your listening story',readableTime(current.measured),'Measured listening time'],['Your #1 artist',current.artists[0]?.name||'Still to discover','From your recorded listening'],['On repeat',current.tracks[0]?.name||'Still to discover','The track you came back to'],['Your top five',current.artists.slice(0,5).map(row=>row.name).join(' · '),'Artists in rotation'],['Days with music',`${current.activeDays} days`,`${current.longestStreak}-day longest streak`],['Your history',count(current.scrobbles),'Verified Last.fm scrobbles'],['Your sources',current.providers.map(row=>row.name).join(' · '),'Unmatched historical provider stays unknown'],['Made of your music',`${count(current.plays)} listens`,'Riff Wrapped · unofficial personal stats']];
+        recap=element('section',null,panel,'wrapped-story');recap.setAttribute('role','dialog');recap.setAttribute('aria-label','Listening recap');
+        const progress=element('div',null,recap,'wrapped-story-progress');cards.forEach(()=>element('i',null,progress));
+        const heading=element('p',null,recap,'wrapped-eyebrow'),fact=element('h2',null,recap),note=element('p',null,recap,'wrapped-story-note');
+        const navigation=element('div',null,recap,'wrapped-story-navigation');
+        const render=()=>{const card=cards[recapIndex];heading.textContent=card[0];fact.textContent=card[1];note.textContent=card[2];progress.childNodes.forEach((node,index)=>node.classList.toggle('active',index<=recapIndex));recap.style.setProperty('--story',recapIndex);};
+        button('Previous',navigation,()=>{recapIndex=(recapIndex+cards.length-1)%cards.length;render();});button('Next',navigation,()=>{recapIndex=(recapIndex+1)%cards.length;render();});button('Close recap',navigation,()=>{recap.remove();recap=null;});render();recap.scrollIntoView({block:'center',behavior:'instant'});
+      }
+      const setupActions=element('div',null,setup,'riffify-controls');
+      button('Save and sync / resume',setupActions,async()=>{await riffifyApi('config',{username:username.value,...(key.value?{apiKey:key.value}:{}),timezone:zone.value});key.value='';await riffifyApi('sync',{});});
+      button('Pause sync',setupActions,()=>riffifyApi('sync/pause',{}));
+      button('Resolve historical durations (50 tracks)',setupActions,async()=>{const result=await riffifyApi('durations',{});showToast(`${result.resolved} metadata lookups completed; historical time remains estimated`);await refresh();});
+      button('Detach Last.fm',setupActions,async()=>{await riffifyApi('config',{apiKey:''});await stats();});
+      const actions=element('div',null,tools,'riffify-controls wrapped-data-actions');
+      button('Refresh',actions,refresh);
+      button(config.tracking?'Pause tracking':'Resume tracking',actions,async()=>{await riffifyApi('config',{tracking:!config.tracking});await stats();});
+      button('Export JSON',actions,async()=>saveBlob(new Blob([JSON.stringify(await riffifyApi('export'),null,2)],{type:'application/json'}),'riffify-history.json'));
+      button('Export scrobbles CSV',actions,async()=>{const data=await riffifyApi('export');const quote=x=>`"${String(x??'').replaceAll('"','""')}"`;const rows=[['timestamp','artist','track','album','source'],...data.scrobbles.map(x=>[x.timestamp,x.artist,x.title,x.album,'lastfm'])];saveBlob(new Blob([rows.map(row=>row.map(quote).join(',')).join('\r\n')],{type:'text/csv'}),'riffify-scrobbles.csv');});
       const historyFile=input('Import Riffify JSON history (16 MB maximum)',actions,'file');historyFile.accept='.json,application/json';
       historyFile.onchange=async()=>{try{const file=historyFile.files[0];if(!file)return;if(file.size>16*1024*1024)throw new Error('History export exceeds 16 MB');await riffifyApi('history/import',JSON.parse(await file.text()));showToast('History imported locally');await refresh();}catch(error){showToast(error.message,'error');}finally{historyFile.value='';}};
-      button('Export scrobbles CSV', actions, async () => { const data = await riffifyApi('export'); const quote = x => `"${String(x ?? '').replaceAll('"','""')}"`; const rows = [['timestamp','artist','track','album','source'], ...data.scrobbles.map(x => [x.timestamp,x.artist,x.title,x.album,'lastfm'])]; saveBlob(new Blob([rows.map(row => row.map(quote).join(',')).join('\r\n')], { type:'text/csv' }), 'riffify-scrobbles.csv'); });
-      const deleteButton = button('Delete local history', actions, () => { deleteButton.textContent = 'Confirm delete local history'; deleteButton.onclick = async () => { await riffifyApi('history', { confirm: true }, 'DELETE'); await stats(); }; });
-      const setup = element('section', null, panel, 'riffify-card'); element('h3', 'Connect Last.fm history', setup); element('p', 'Read-only import. Your API key stays in local user configuration. No Last.fm password needed.', setup);
-      const profile = element('a', 'Create your own Last.fm API key', setup); profile.href = 'https://www.last.fm/api/account/create'; profile.target = '_blank'; profile.rel = 'noreferrer noopener';
-      const username = input('Last.fm username', setup, 'text', config.username); const key = input(config.hasKey ? 'API key saved · leave empty to keep' : 'Last.fm API key', setup, 'password');
-      const account=element('a',`Last.fm profile: ${config.username}`,setup);account.href=`https://www.last.fm/user/${encodeURIComponent(config.username)}`;account.target='_blank';account.rel='noreferrer noopener';
-      const status = element('p', null, setup);
-      button('Save and sync / resume', setup, async () => { await riffifyApi('config', { username: username.value, ...(key.value ? { apiKey: key.value } : {}), timezone: zone.value }); key.value = ''; await riffifyApi('sync', {}); });
-      button('Pause sync', setup, () => riffifyApi('sync/pause', {}));
-      button('Resolve historical durations (50 tracks)',setup,async()=>{const result=await riffifyApi('durations',{});showToast(`${result.resolved} metadata lookups completed; historical time remains estimated`);await refresh();});
-      button('Detach Last.fm', setup, async () => { await riffifyApi('config', { apiKey: '' }); await stats(); });
-      clearInterval(poll); poll = setInterval(async () => { try { const s = await riffifyApi('sync'); status.textContent = `${s.running ? 'Syncing' : 'Idle'} · ${s.retrieved || 0} / ${s.total || '?'} scrobbles · page ${s.page || 0}/${s.pages || '?'} ${s.profile?`· ${s.profile.name}: ${s.profile.playcount} reported scrobbles · registered ${s.profile.registered?new Date(s.profile.registered*1000).toLocaleDateString():'unknown'}`:''} ${s.error || ''}`; if (s.running || state.isPlaying) await refresh(); } catch (e) { status.textContent = e.message; } }, 2000);
+      const deleteButton=button('Delete local history',actions,()=>{deleteButton.textContent='Confirm delete local history';deleteButton.onclick=async()=>{try{await riffifyApi('history',{confirm:true},'DELETE');await stats();}catch(error){showToast(error.message,'error');}};});
+      const png=button('Save recap PNG',toolbar,()=>{
+        if(!current)return;
+        const canvas=document.createElement('canvas');canvas.width=1200;canvas.height=800;const context=canvas.getContext('2d');
+        const style=getComputedStyle(panel),color=name=>style.getPropertyValue(name).trim();
+        context.fillStyle=color('--md-sys-color-surface')||'#141218';context.fillRect(0,0,1200,800);
+        const gradient=context.createLinearGradient(0,0,1200,800);gradient.addColorStop(0,color('--md-sys-color-primary-container')||'#4f378b');gradient.addColorStop(1,color('--md-sys-color-surface-container')||'#1e1f22');context.fillStyle=gradient;context.fillRect(32,32,1136,736);
+        context.fillStyle=color('--md-sys-color-on-surface')||'#e6e6e8';context.font='24px "Google Sans",sans-serif';context.fillText('RIFF WRAPPED · '+period.selectedOptions[0].textContent.toUpperCase(),80,105);
+        context.font='96px "Google Sans",sans-serif';context.fillText(readableTime(current.measured),80,225);context.font='22px "Google Sans",sans-serif';context.fillText('Measured listening time',80,265);
+        context.fillText(`${count(current.plays)} counted listens · ${count(current.scrobbles)} Last.fm scrobbles`,80,330);
+        context.font='28px "Google Sans",sans-serif';current.artists.slice(0,5).forEach((row,index)=>context.fillText(`${String(index+1).padStart(2,'0')}   ${row.name}`.slice(0,60),80,410+index*52));
+        context.font='18px "Google Sans",sans-serif';context.fillText('Unofficial personal stats · Historical time is estimated or unknown',80,720);canvas.toBlob(blob=>saveBlob(blob,'riff-wrapped.png'));
+      });png.classList.add('wrapped-export');
+      for(const control of [period,scope,rank,zone,from,to])control.onchange=()=>refresh().catch(error=>showToast(error.message,'error'));
+      clearInterval(poll);poll=setInterval(async()=>{
+        if(loading || panel.classList.contains('hidden'))return;loading=true;
+        try{const s=await riffifyApi('sync');if(view!=='stats')return;status.textContent=`${s.running?'Syncing':'Idle'} · ${s.retrieved||0} / ${s.total||'?'} scrobbles · page ${s.page||0}/${s.pages||'?'} ${s.profile?`· ${s.profile.name}: ${s.profile.playcount} reported scrobbles`:''} ${s.error||''}`;if(s.running||state.isPlaying)await refresh();}catch(error){status.textContent=error.message;}finally{loading=false;}
+      },2000);
       await refresh();
     }
+
     function saveBlob(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
     async function library() {
       view='library';open('Your Spotify library');const controls=element('div',null,panel,'riffify-controls'),list=element('div',null,panel);
@@ -191,7 +273,6 @@
       const b = document.createElement('button'); b.className = 'nav-item'; b.title = label; b.setAttribute('aria-label', label); b.innerHTML = `<div class="nav-indicator"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${svg}</svg></div>`; b.onclick = () => fn().catch(e => showToast(e.message, 'error')); sidebar?.append(b);
     }
     window.electronAPI.importAudioFiles = async () => { uploadLocal(); return []; };
-    const exit = document.createElement('button'); exit.className = 'titlebar-btn riffify-exit'; exit.textContent = 'Exit Riffify'; exit.title = 'Return to Spotify'; exit.onclick = () => call('exit'); document.querySelector('.titlebar-controls')?.prepend(exit);
     async function uploadLocal() {
       const picker = document.createElement('input'); picker.type = 'file'; picker.accept = '.mp3,.m4a,.flac,.wav,.ogg,.opus'; picker.multiple = true;
       picker.onchange = async () => { for (const file of picker.files) { try { const response = await fetch(`../api/riffify/import?name=${encodeURIComponent(file.name)}`, { method: 'POST', body: file }); const result = await response.json(); if (!response.ok) throw new Error(result.error); await fetch(`http://127.0.0.1:${state.serverPort}/api/library-add`, { method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:[result]}) }); } catch (e) { showToast(e.message,'error'); } } renderLocalView(); }; picker.click();

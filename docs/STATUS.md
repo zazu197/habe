@@ -4,7 +4,7 @@ Source is published to https://github.com/zazu197/habe. This installed developme
 
 Implemented: pinned authentic Riff UI/assets, Spotify-first search/player/library, paginated album/artist navigation, private playlist create/add/remove, authenticated companion, provider coordination, local audio and LRC import, browser CSS themes, SQLite interval/event ledger, Last.fm reconciliation/resumable sync/duration estimates, calendar stats/ranks/activity/streaks/discovery/contexts, recap/PNG, JSON/CSV export, transactional JSON history import, download formats/jobs/playlist/subfolder/conversion/open/import, installation and rollback scripts.
 
-Observed: actual Windows Spotify displayed original Riff with real liked songs and playlists; Spicetify apply succeeded. Automated checks: 22 tests pass; 21 JavaScript files parse; headless UI contract passes. Matched settings fixture SSIM is approximately 0.999 with documented exclusions.
+Observed: actual Windows Spotify displayed original Riff with real liked songs and playlists; Spicetify apply succeeded. Automated checks: 22 tests pass; 21 JavaScript files parse; headless UI contract passes. Earlier settings SSIM was 0.999; the requested Spotify-interface row shifts content and yields 0.857 in the current unaligned crop. See TEST_REPORT.md.
 
 Blocked: user's own Last.fm API key is not configured, so actual zazafent validation/backfill is unavailable. Native UI interaction stopped when the user pressed Escape; no further Computer Use was performed. Actual media saving needs a user-supplied source with rights and source permission.
 

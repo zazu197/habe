@@ -4,11 +4,19 @@
   "errors": [],
   "calls": [
     [
+      "navigate",
+      "/riffify"
+    ],
+    [
       "play",
       "spotify:track:0123456789012345678901"
     ],
     [
       "toggle"
+    ],
+    [
+      "navigate",
+      "/"
     ]
   ]
 }

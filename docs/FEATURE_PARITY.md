@@ -4,7 +4,7 @@ Code present, runtime observations and acceptance evidence are distinct. Preserv
 
 | Area | Implementation | Evidence and remaining work |
 | --- | --- | --- |
-| Shell/CSS/SVGs/backgrounds/liquid motion | Actual upstream DOM/CSS/logic reused | Actual Spotify observed; settings fixture SSIM 0.999; full native views/FPS pending |
+| Shell/CSS/SVGs/backgrounds/liquid motion | Actual upstream DOM/CSS/logic reused | Actual Spotify observed; earlier settings fixture SSIM 0.999, current 0.857 with requested extra settings row; full native views/FPS pending |
 | Provider selector | Spotify first/default; original three retained | Headless default verified; actual switching/audio overlap pending |
 | Spotify library/albums/artists/playlists | Paginated albums/artists; native artist detail; create/add/remove | Real liked songs/playlists observed; artist fixture verified; account mutations not live-tested |
 | Search/playback/transport | Genuine native URIs and controls, no YouTube substitution | Headless search/URI/toggle passes; native controls/niche results/Connect pending |

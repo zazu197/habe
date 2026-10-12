@@ -6,10 +6,10 @@
     1548,
     958
   ],
-  "ssim": 0.9990490864746465,
+  "ssim": 0.856935219903214,
   "gaussian_window": 11,
   "sigma": 1.5,
-  "mean_absolute_pixel_error": 0.06097065749903779,
+  "mean_absolute_pixel_error": 9.860904444429949,
   "excluded": [
     "native window chrome",
     "provider pills",

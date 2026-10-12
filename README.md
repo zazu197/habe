@@ -4,7 +4,7 @@ The actual [Riff](https://github.com/rootscripts/riff) interface inside desktop 
 
 ## Status
 
-This repository contains an installed development build, not a certified completion of the full master specification. The real Windows Spotify client opened the original Riff interface and loaded the user's liked songs and playlists. Automated checks and the headless UI contract pass; matched fixture settings reach 0.999 SSIM. Native playback, Connect, full visual parity and performance still require live verification. Last.fm history needs the user's own locally configured API key. See [feature status](docs/FEATURE_PARITY.md) and [test report](docs/TEST_REPORT.md).
+This repository contains an installed development build, not a certified completion of the full master specification. The real Windows Spotify client opened the original Riff interface and loaded the user's liked songs and playlists. Automated checks and the headless UI contract pass. Native playback, Connect, full visual parity and performance still require live verification. Last.fm history needs the user's own locally configured API key. See [feature status](docs/FEATURE_PARITY.md) and [test report](docs/TEST_REPORT.md).
 
 ## Build and install
 
@@ -21,7 +21,7 @@ npm run install:spotify
 npm start
 ```
 
-The companion runs at `127.0.0.1:38473` by default. Installation pairs the Custom App with a random local token, preserves the existing Spicetify applications and theme, and saves a rollback copy outside Git. Riffify covers Spotify's content area while its route is active. Use **Exit Riffify** to return to Spotify. Close the companion with Ctrl+C; it has no automatic startup registration.
+The companion runs at `127.0.0.1:38473` by default. Installation pairs the Custom App with a random local token, preserves the existing Spicetify applications and theme, and saves a rollback copy outside Git. Riffify covers Spotify's content area while its route is active. Choose **Settings → Interface → Show Spotify UI** to return to Spotify; reopen Riffify from the sidebar. Close the companion with Ctrl+C; it has no automatic startup registration.
 
 For external playback and downloads, run `npm run setup:media` or install verified yt-dlp and FFmpeg yourself. The setup command checks published SHA-256 checksums for downloaded tools and records versions and hashes locally. Existing tools from PATH are recorded as user installations with unverified upstream origin. No executable or downloaded media belongs in Git.
 
