@@ -16,6 +16,10 @@
 .riffify-panel a { color:var(--md-sys-color-primary); margin:12px; display:inline-block; }
 .riffify-panel button { margin:8px; }
 button:disabled { opacity:.4; cursor:not-allowed; }
+.platform-switch-container { max-width:620px; }
+body.compact-engine-btns { --engine-w:164px; }
+.titlebar-controls .riffify-exit { width:auto; padding:0 12px; white-space:nowrap; }
+@media (min-width:901px) and (max-width:1400px) { .top-nav:not(.search-pos-left):not(.search-pos-right) .search-box-wrapper { left:24px; transform:translateY(-50%); width:calc(100% - var(--engine-w) - 80px); } }
 :focus-visible { outline:2px solid var(--md-sys-color-primary); outline-offset:4px; }
 @keyframes riffify-emerge { from { transform:translateY(16px) scale(.98); opacity:0; } to { transform:none; opacity:1; } }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; } }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync,rmSync } from 'node:fs';
+import { mkdtempSync,rmSync,readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { startCompanion } from '../companion/server.mjs';
@@ -16,6 +16,11 @@ test('real companion rejects missing token, hostile Origin and unsafe operations
     assert.equal((await fetch(`${paired}/ui/server.js`)).status,404);
     const ui=await fetch(`${paired}/ui/`);assert.equal(ui.status,200);assert.match(await ui.text(),/platform-spotify/);
     const settings=await(await fetch(`${paired}/api/riffify/config`)).json();assert.equal(settings.username,'zazafent');assert.equal('token' in settings,false);assert.equal('apiKey' in settings,false);
+    assert.equal((await fetch(`${paired}/api/riffify/config`,{method:'POST',body:JSON.stringify({username:'changed',timezone:'Invalid/Zone'})})).status,400);
+    assert.equal((await(await fetch(`${paired}/api/riffify/config`)).json()).username,'zazafent');
+    assert.equal((await fetch(`${paired}/api/riffify/config`,{method:'POST',body:JSON.stringify({tracking:false})})).status,200);
+    assert.equal(JSON.parse(readFileSync(path.join(data,'connection.json'),'utf8')).tracking,false);
+    assert.equal((await fetch(`${paired}/api/riffify/config`,{method:'POST',body:JSON.stringify({tracking:true})})).status,200);
     assert.equal((await fetch(`${paired}/api/translate`,{method:'POST',body:JSON.stringify({texts:[null]})})).status,400);
     assert.equal((await fetch(`${paired}/api/riffify/stats?period=all`)).status,200);
     const upload=await fetch(`${paired}/api/riffify/import?name=test.wav`,{method:'POST',body:Buffer.alloc(100)});const item=await upload.json();assert.equal(upload.status,200);

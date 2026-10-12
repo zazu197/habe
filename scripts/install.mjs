@@ -34,6 +34,6 @@ if(process.argv.includes('--uninstall')) {
   writeFileSync(path.join(target,'connection.js'),`window.RiffifyConnection = ${JSON.stringify({origin:`http://127.0.0.1:${local.port}`,token:local.token})};\n`,{mode:0o600});
   run(['config','custom_apps','riffify']);
   // Spicetify validates backup and patch compatibility itself. Never overwrite or force a failed patch.
-  run(alreadyInstalled?['apply']:['backup','apply']);
+  run(alreadyInstalled?['apply',...(process.argv.includes('--no-restart')?['--no-restart']:[])]:['backup','apply',...(process.argv.includes('--no-restart')?['--no-restart']:[])]);
   console.log('Installed Riffify. Start companion with npm start. Backup is outside the repository.');
 }

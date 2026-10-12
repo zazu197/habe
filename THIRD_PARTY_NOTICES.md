@@ -4,7 +4,7 @@ Riffify uses the MIT-licensed Riff source by rootscripts, pinned at `80ff208a32c
 
 Bundled assets retain their upstream comments. HLS.js is Apache-2.0, not covered solely by Riff's MIT license. Its notice and the Apache license are included in `licenses/HLS-NOTICE.txt` and `licenses/Apache-2.0.txt`. The notice includes derived code credited to Brightcove.
 
-Monaco Editor is MIT-licensed by Microsoft Corporation. See `licenses/Monaco-MIT.txt`. Tone.js is MIT-licensed by Yotam Mann. See `licenses/Tone-MIT.txt`; the vendored Tone asset is preserved but not loaded by the current UI.
+Monaco Editor is MIT-licensed by Microsoft Corporation. See `licenses/Monaco-MIT.txt`. Riff's unused Tone.js bundle is omitted; neither the HTML nor audio engine calls it.
 
 Google Sans is requested from Google's hosted font stylesheet as in upstream Riff; no Google font binary is redistributed here. Availability and use remain subject to Google's hosted font service.
 

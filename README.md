@@ -4,7 +4,7 @@ The actual [Riff](https://github.com/rootscripts/riff) interface inside desktop 
 
 ## Status
 
-This repository contains an installed development build, not a certified completion of the full master specification. The real Windows Spotify client opened the original Riff interface and loaded the user's Spotify liked songs and playlists. Native playback, Spotify Connect, screenshot parity, and performance still require live verification. Last.fm history cannot be imported until the user supplies their own API key locally. See [feature status](docs/FEATURE_PARITY.md) and [test report](docs/TEST_REPORT.md) before relying on a feature.
+This repository contains an installed development build, not a certified completion of the full master specification. The real Windows Spotify client opened the original Riff interface and loaded the user's liked songs and playlists. Automated checks and the headless UI contract pass; matched fixture settings reach 0.999 SSIM. Native playback, Connect, full visual parity and performance still require live verification. Last.fm history needs the user's own locally configured API key. See [feature status](docs/FEATURE_PARITY.md) and [test report](docs/TEST_REPORT.md).
 
 ## Build and install
 
@@ -29,7 +29,7 @@ For external playback and downloads, run `npm run setup:media` or install verifi
 
 Open **Stats / Wrapped**, use the default username `zazafent`, enter your own [Last.fm API key](https://www.last.fm/api/account/create), and choose **Save and sync / resume**. This is a read-only API integration; no Last.fm password or scrobble submission is needed. The companion imports up to 200 timestamped records per page, saves the cursor, and supports pause/resume and incremental refresh.
 
-Historical Last.fm scrobbles are counts, not measured listening minutes. The UI labels unknown duration coverage explicitly. Recent listening time comes from observed playback intervals. Unmatched Last.fm records retain unknown provider attribution and are excluded from strictly Spotify-only results. Local storage, export, pause tracking, and confirmed local deletion are available in Stats.
+Historical Last.fm scrobbles are counts, not measured listening minutes. Exact-name duration lookups add explicitly estimated historical time; unresolved records stay unknown. Recent listening time comes from observed intervals. Unmatched Last.fm records retain unknown provider attribution and are excluded from Spotify-only scope. Local JSON/CSV export, validated Riffify JSON history import, pause tracking and confirmed deletion are available in Stats.
 
 ## Scope and privacy
 

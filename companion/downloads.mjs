@@ -27,11 +27,13 @@ export class Downloads {
     });
     return { proc, promise };
   }
-  async formats(value) {
-    const url = mediaUrl(value);
-    const { promise } = this.run(['--no-playlist', '--skip-download', '--dump-single-json', '--', url]);
+  async formats(value,{playlist=false}={}) {
+    const url = mediaUrl(value,{playlist});
+    let query=url, playlistCount=null;
+    if(playlist) {const {promise}=this.run(['--flat-playlist','--playlist-end','100','--skip-download','--dump-single-json','--',url]);const listing=JSON.parse(await promise);playlistCount=listing.entries?.length||0;const first=listing.entries?.[0];if(!first?.id || !/^[\w-]{11}$/.test(first.id))throw new Error('Playlist has no accessible videos');query=`https://www.youtube.com/watch?v=${first.id}`;}
+    const { promise } = this.run(['--no-playlist', '--skip-download', '--dump-single-json', '--', query]);
     const info = JSON.parse(await promise);
-    return { url, title: String(info.title || ''), formats: (info.formats || []).filter(f => f.url && (f.vcodec !== 'none' || f.acodec !== 'none')).map(f => ({ id: String(f.format_id), ext: f.ext, height: f.height || null, audio: f.acodec !== 'none', video: f.vcodec !== 'none', size: f.filesize || f.filesize_approx || null })) };
+    return { url, title: String(info.title || ''), playlistCount,formats: (info.formats || []).filter(f => f.url && (f.vcodec !== 'none' || f.acodec !== 'none')).map(f => ({ id: String(f.format_id), ext: f.ext, height: f.height || null, audio: f.acodec !== 'none', video: f.vcodec !== 'none', size: f.filesize || f.filesize_approx || null })) };
   }
   create(input) {
     if (input.authorized !== true) throw new Error('Confirm your rights and source permission before saving media');
@@ -41,8 +43,9 @@ export class Downloads {
     if ([...this.jobs.values()].filter(j => ['queued', 'running'].includes(j.state)).length >= 20) throw new Error('Download queue is full');
     const filename = String(input.filename || 'media').normalize('NFKC').replace(/[<>:"/\\|?*\x00-\x1f%]/g, '_').replace(/[. ]+$/, '').slice(0, 100);
     if (!filename || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(filename)) throw new Error('Invalid filename');
-    const id = randomUUID();
-    const job = { id, url, kind: input.kind, format: input.format, filename, playlist: input.playlist === true, metadata: input.metadata === true, state: 'queued', percent: 0, speed: null, eta: null, error: '' };
+    const id = randomUUID(), destination=String(input.destination||'').trim();if(destination && (!/^[\w -]{1,80}$/.test(destination)||/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(destination)))throw new Error('Destination must be a safe folder name inside private downloads');
+    if(!['source','m4a','mp3','flac','opus'].includes(input.conversion||'m4a'))throw new Error('Unsupported audio conversion');
+    const job = { id, url, kind: input.kind, format: input.format, filename, destination,conversion:input.conversion||'m4a',playlist: input.playlist === true, metadata: input.metadata === true, state: 'queued', percent: 0, speed: null, eta: null, error: '' };
     this.jobs.set(id, job); this.save(); this.pump(); return this.public(job);
   }
   public(job) { const { proc, ...data } = job; return data; }
@@ -51,11 +54,12 @@ export class Downloads {
     if ([...this.jobs.values()].some(j => j.proc)) return;
     const job = [...this.jobs.values()].find(j => j.state === 'queued'); if (!job) return;
     job.state = 'running'; this.save();
-    const dir = safePath(this.root, job.id); mkdirSync(dir, { recursive: true });
+    let dir;
+    try {dir=this.directory(job);mkdirSync(dir,{recursive:true});}catch(error){job.state='failed';job.error='Could not prepare download destination: '+error.message;this.save();this.pump();return;}
     const args = ['--newline', '--no-overwrites', '--restrict-filenames', '--max-filesize', '2G', '--playlist-end', '100', '--paths', dir,
       '-o', `${job.filename}-%(id)s.%(ext)s`, '--progress-template', 'download:RIFFIFY:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s', '-f', job.format];
     args.push(job.playlist ? '--yes-playlist' : '--no-playlist');
-    if (job.kind === 'audio') args.push('-x', '--audio-format', 'm4a');
+    if (job.kind === 'audio' && job.conversion!=='source') args.push('-x', '--audio-format', job.conversion);
     if (job.metadata) args.push('--embed-metadata', '--embed-thumbnail');
     args.push('--', job.url);
     try {
@@ -71,6 +75,7 @@ export class Downloads {
   }
   cancel(id) { const job = this.jobs.get(id); if (!job) throw new Error('Unknown download'); if (['queued', 'running'].includes(job.state)) { job.state = 'canceled'; job.proc?.kill(); } this.save(); this.pump(); }
   retry(id) { const job = this.jobs.get(id); if (!job || job.proc || !['failed', 'canceled'].includes(job.state)) throw new Error('Wait for download to stop before retrying'); job.state = 'queued'; job.error = ''; this.pump(); }
-  file(id, name) { const job = this.jobs.get(id); if (!job || job.state !== 'completed' || !job.files.includes(name)) throw new Error('Unknown completed file'); const file = safePath(safePath(this.root, id), name); if (!existsSync(file)) throw new Error('File no longer exists'); return file; }
+  directory(job) {const base=job.destination?safePath(this.root,job.destination):this.root;return safePath(base,job.id);}
+  file(id, name) { const job = this.jobs.get(id); if (!job || job.state !== 'completed' || !job.files.includes(name)) throw new Error('Unknown completed file'); const file = safePath(this.directory(job), name); if (!existsSync(file)) throw new Error('File no longer exists'); return file; }
   close() { for (const job of this.jobs.values()) job.proc?.kill(); }
 }

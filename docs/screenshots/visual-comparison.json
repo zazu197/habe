@@ -1,0 +1,20 @@
+{
+  "kind": "headless matched fixture settings region; not native Spotify parity",
+  "region": [
+    112,
+    104,
+    1548,
+    958
+  ],
+  "ssim": 0.9990490864746465,
+  "gaussian_window": 11,
+  "sigma": 1.5,
+  "mean_absolute_pixel_error": 0.06097065749903779,
+  "excluded": [
+    "native window chrome",
+    "provider pills",
+    "new sidebar entries",
+    "player",
+    "right lyrics panel"
+  ]
+}

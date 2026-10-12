@@ -13,3 +13,5 @@ Open Riffify from Spotify's sidebar. It becomes the initial route while its exte
 For history, open Stats / Wrapped and configure the default `zazafent` Last.fm account with your own API key. API keys are stored locally, not in source. See `LASTFM_INTEGRATION.md`. For downloads, confirm both your rights and source permission before saving anything; Spotify tracks cannot be downloaded.
 
 Stop the companion with Ctrl+C. After changing generated bridge files, rebuild and rerun installation. Restart the companion after backend changes. Upgrade Spotify/Spicetify only with a current backup and rerun live compatibility checks.
+
+Use `npm run install:spotify -- --no-restart` to apply files without restarting Spotify. A later restart may be needed to load updated bridge files.

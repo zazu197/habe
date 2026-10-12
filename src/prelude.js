@@ -29,6 +29,14 @@
     getDataDir: async () => ({ path: 'Private Riffify data directory' }),
     getDownloadDir: async () => ({ path: 'Riffify/downloads (local user data)' }),
     getCustomThemes: async () => [],
-    setZoomFactor: value => { document.body.style.zoom = value; }
+    setZoomFactor: value => { document.body.style.zoom = value; },
+    getAppCss: async () => (await nativeFetch(`${prefix}/ui/styles.css`)).text(),
+    listThemes: async () => JSON.parse(localStorage.getItem('riffify_themes')||'[]'),
+    setThemeEnabled: async (id,enabled) => {const themes=await window.electronAPI.listThemes();const theme=themes.find(t=>t.id===id);if(theme)theme.enabled=enabled;localStorage.setItem('riffify_themes',JSON.stringify(themes));applyThemes();},
+    removeTheme: async id => {localStorage.setItem('riffify_themes',JSON.stringify((await window.electronAPI.listThemes()).filter(t=>t.id!==id)));applyThemes();},
+    disableAllThemes: async () => {localStorage.setItem('riffify_themes',JSON.stringify((await window.electronAPI.listThemes()).map(t=>({...t,enabled:false}))));applyThemes();},
+    importThemes: () => new Promise(resolve=>{const picker=document.createElement('input');picker.type='file';picker.accept='.css';picker.multiple=true;picker.oncancel=()=>resolve([]);picker.onchange=async()=>{const themes=await window.electronAPI.listThemes(),added=[];for(const file of picker.files){if(file.size>1024*1024)continue;const theme={id:crypto.randomUUID(),name:file.name,css:await file.text(),enabled:true};themes.push(theme);added.push(theme);}localStorage.setItem('riffify_themes',JSON.stringify(themes));applyThemes();resolve(added);};picker.click();})
   };
+  async function applyThemes(){for(const node of document.querySelectorAll('[data-riffify-theme]'))node.remove();for(const theme of await window.electronAPI.listThemes())if(theme.enabled){const node=document.createElement('style');node.dataset.riffifyTheme=theme.id;node.textContent=theme.css;document.head.append(node);}}
+  applyThemes();
 })();

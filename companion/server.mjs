@@ -4,9 +4,10 @@ import dns from 'node:dns/promises';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync, existsSync, realpathSync, createReadStream, createWriteStream, statSync, renameSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, realpathSync, createReadStream, createWriteStream, statSync, renameSync, copyFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { spawn } from 'node:child_process';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import { equalToken, safePath, mediaUrl, readJson } from './security.mjs';
@@ -58,12 +59,14 @@ async function audioProxy(req,res,value,redirects=0) {
 }
 
 export async function startCompanion({ port, config = configuration(), data = dataDir } = {}) {
+  const configFile=path.join(data,'connection.json');
   if (!existsSync(path.join(root,'dist/ui/index.html'))) throw new Error('Run npm run build before starting companion');
   mkdirSync(data,{recursive:true}); process.env.RIFF_DATA_DIR=data;
   const require=createRequire(import.meta.url), backend=require('../dist/ui/server.js'), platform=require('../dist/ui/platform.js');
   const ledger=new Ledger(path.join(data,'history.sqlite')); ledger.tracking=config.tracking;
+  ledger.db.exec('PRAGMA wal_checkpoint(FULL)');copyFileSync(path.join(data,'history.sqlite'),path.join(data,'history.backup.sqlite'));
   const sync=new LastFmSync(ledger,config), downloads=new Downloads(path.join(data,'downloads'),platform.ytDlpCommand);
-  let syncPaused=false;
+  let syncPaused=ledger.get('syncPaused',false);
   const periodic=setInterval(()=>{ if(config.apiKey && !sync.status.running && !syncPaused) sync.run(); },10*60*1000); periodic.unref();
   const allowedGet=new Set(['/api/search','/api/artist','/api/check-cache','/api/stream-info','/api/local-track','/api/library','/api/library-file','/api/local-thumbnail','/api/offline-library','/api/lyrics','/api/tools-status']);
   const allowedPost=new Set(['/api/state','/api/library-add','/api/library-update','/api/library-remove','/api/save-custom-lyrics','/api/track-analysis','/api/vibe','/api/translate','/api/offline-delete','/api/clear-offline-library']);
@@ -89,34 +92,55 @@ export async function startCompanion({ port, config = configuration(), data = da
         const endpoint=route.slice(13);
         if(endpoint==='config' && req.method==='GET') return json(res,{username:config.username,timezone:config.timezone,hasKey:!!config.apiKey,tracking:ledger.tracking});
         if(endpoint==='config' && req.method==='POST') {
-          const body=await readJson(req);
+          const body=await readJson(req), next={...config};
           if(sync.status.running && ('username' in body || 'apiKey' in body)) throw new Error('Pause sync before changing account/key');
-          if('username' in body) { if(!/^[\w-]{1,64}$/.test(body.username)) throw new Error('Invalid username'); config.username=body.username; }
-          if('apiKey' in body) { if(typeof body.apiKey!=='string' || body.apiKey.length>128 || /[^a-zA-Z0-9]/.test(body.apiKey)) throw new Error('Invalid API key'); config.apiKey=body.apiKey; }
-          if('timezone' in body) { new Intl.DateTimeFormat('en',{timeZone:body.timezone}); config.timezone=body.timezone; }
-          if('tracking' in body) { if(typeof body.tracking!=='boolean') throw new Error('Invalid tracking setting'); ledger.tracking=body.tracking; config.tracking=body.tracking; ledger.last=null; }
-          writeFileSync(configFile+'.tmp',JSON.stringify(config,null,2),{mode:0o600}); renameSync(configFile+'.tmp',configFile); return json(res,{saved:true});
+          if('username' in body) { if(typeof body.username!=='string'||!/^[\w-]{1,64}$/.test(body.username)) throw new Error('Invalid username'); next.username=body.username; }
+          if('apiKey' in body) { if(typeof body.apiKey!=='string' || body.apiKey.length>128 || /[^a-zA-Z0-9]/.test(body.apiKey)) throw new Error('Invalid API key'); next.apiKey=body.apiKey; }
+          if('timezone' in body) { if(typeof body.timezone!=='string')throw new Error('Invalid timezone');new Intl.DateTimeFormat('en',{timeZone:body.timezone}); next.timezone=body.timezone; }
+          if('tracking' in body) { if(typeof body.tracking!=='boolean') throw new Error('Invalid tracking setting'); next.tracking=body.tracking; }
+          writeFileSync(configFile+'.tmp',JSON.stringify(next,null,2),{mode:0o600}); renameSync(configFile+'.tmp',configFile);Object.assign(config,next);ledger.tracking=config.tracking;if('tracking' in body)ledger.last=null; return json(res,{saved:true});
         }
         if(endpoint==='sample' && req.method==='POST') { const body=await readJson(req,16384); if (typeof body.playing!=='boolean') throw new Error('Invalid playing state'); ledger.sample(body); return json(res,{saved:true}); }
         if(endpoint==='stats' && req.method==='GET') return json(res,ledger.stats({...Object.fromEntries(u.searchParams),username:config.username,timezone:u.searchParams.get('timezone')||config.timezone}));
+        if(endpoint==='lyrics' && req.method==='GET') {
+          const title=u.searchParams.get('title')||'',artist=u.searchParams.get('artist')||'',album=u.searchParams.get('album')||'',duration=Number(u.searchParams.get('duration'));
+          if(!title||!artist||title.length>300||artist.length>300||album.length>300||!Number.isFinite(duration)||duration<0)throw new Error('Valid lyrics metadata required');
+          const url=new URL('https://lrclib.net/api/get');url.search=new URLSearchParams({track_name:title,artist_name:artist,...(album?{album_name:album}:{}),...(duration>0?{duration:String(Math.round(duration))}:{})}).toString();
+          const response=await fetch(url,{headers:{'User-Agent':'Riffify/0.1 (https://github.com/zazu197/habe)'},signal:AbortSignal.timeout(10000)});
+          if(!response.ok)return json(res,{success:false,lyrics:null,source:'LRCLIB'});
+          const data=await response.json(),key=s=>String(s||'').normalize('NFKC').trim().toLocaleLowerCase();
+          if(key(data.trackName)!==key(title)||key(data.artistName)!==key(artist)||duration>0&&Number(data.duration)>0&&Math.abs(data.duration-duration)>3)return json(res,{success:false,lyrics:null,source:'LRCLIB'});
+          return json(res,{success:Boolean(data.syncedLyrics||data.plainLyrics),lyrics:data.syncedLyrics||data.plainLyrics||null,source:'LRCLIB',timing:data.syncedLyrics?'line':'plain'});
+        }
         if(endpoint==='export' && req.method==='GET') return json(res,ledger.export());
-        if(endpoint==='history' && req.method==='DELETE') { const body=await readJson(req); if(body.confirm!==true || sync.status.running) throw new Error('Pause sync and confirm deletion first'); ledger.clear(); return json(res,{deleted:true}); }
+        if(endpoint==='history/import' && req.method==='POST') { if(sync.status.running)throw new Error('Pause sync before importing history');return json(res,ledger.importHistory(await readJson(req,16*1024*1024))); }
+        if(endpoint==='history' && req.method==='DELETE') { const body=await readJson(req); if(body.confirm!==true || sync.status.running) throw new Error('Pause sync and confirm deletion first'); ledger.clear();syncPaused=true;ledger.set('syncPaused',true);return json(res,{deleted:true}); }
         if(endpoint==='sync' && req.method==='GET') return json(res,sync.status);
-        if(endpoint==='sync' && req.method==='POST') { syncPaused=false; sync.run(); return json(res,{started:true}); }
-        if(endpoint==='sync/pause' && req.method==='POST') { syncPaused=true; sync.stop(); return json(res,{paused:true}); }
+        if(endpoint==='sync' && req.method==='POST') { syncPaused=false;ledger.set('syncPaused',false);sync.run(); return json(res,{started:true}); }
+        if(endpoint==='sync/pause' && req.method==='POST') { syncPaused=true;ledger.set('syncPaused',true);sync.stop(); return json(res,{paused:true}); }
         if(endpoint==='rankings' && req.method==='GET') return json(res,await sync.rankings(u.searchParams.get('kind'),u.searchParams.get('period')||'overall'));
-        if(endpoint==='formats' && req.method==='GET') return json(res,await downloads.formats(u.searchParams.get('url')));
+        if(endpoint==='durations' && req.method==='POST') return json(res,await sync.enrichDurations(50));
+        if(endpoint==='formats' && req.method==='GET') return json(res,await downloads.formats(u.searchParams.get('url'),{playlist:u.searchParams.get('playlist')==='true'}));
         if(endpoint==='downloads' && req.method==='GET') return json(res,downloads.list());
         if(endpoint==='downloads' && req.method==='POST') {
           const body=await readJson(req);if(body.authorized!==true)throw new Error('Confirm download rights and source permission');
-          const available=await downloads.formats(body.url), selected=available.formats.find(f=>f.id===body.format);
+          const available=await downloads.formats(body.url,{playlist:body.playlist===true}), selected=available.formats.find(f=>f.id===body.format);
           if(!selected || body.kind==='video'&&!selected.video || body.kind==='audio'&&(!selected.audio||selected.video))throw new Error('Selected format is unavailable for this media type');
           if(body.kind==='video'&&!selected.audio)body.format+='+bestaudio';
           return json(res,downloads.create(body));
         }
-        const job=endpoint.match(/^downloads\/([a-f0-9-]{36})\/(cancel|retry|file)$/);
+        const job=endpoint.match(/^downloads\/([a-f0-9-]{36})\/(cancel|retry|file|open|folder|import)$/);
         if(job && job[2]==='file' && req.method==='GET') return serveFile(req,res,downloads.file(job[1],u.searchParams.get('name')));
         if(job && ['cancel','retry'].includes(job[2]) && req.method==='POST') { downloads[job[2]](job[1]); return json(res,{ok:true}); }
+        if(job && ['open','folder','import'].includes(job[2]) && req.method==='POST') {
+          const body=await readJson(req), file=downloads.file(job[1],body.name);
+          if(!/\.(mp3|m4a|flac|wav|ogg|opus|mp4|webm|mkv|avi|mov)$/i.test(file))throw new Error('Only completed media files can be opened');
+          if(job[2]==='import') {
+            const ext=path.extname(file).slice(1).toLowerCase();if(!['mp3','m4a','flac','wav','ogg','opus'].includes(ext))throw new Error('Import an audio file');
+            const id='local_'+randomBytes(6).toString('hex'), name=`${id}.${ext}`;copyFileSync(file,safePath(platform.LIBRARY_DIR,name));return json(res,{id,file:name,ext,name:path.basename(file,`.${ext}`)});
+          }
+          const target=job[2]==='folder'?path.dirname(file):file;const command=process.platform==='win32'?'explorer.exe':process.platform==='darwin'?'open':'xdg-open';const child=spawn(command,[target],{windowsHide:true,shell:false});await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});return json(res,{launched:true});
+        }
         if(endpoint==='import' && req.method==='POST') {
           const name=u.searchParams.get('name')||'', ext=path.extname(name).slice(1).toLowerCase();
           if(!['mp3','m4a','flac','wav','ogg','opus'].includes(ext)) throw new Error('Unsupported local audio format');

@@ -1,0 +1,14 @@
+{
+  "kind": "headless fixture contract; not native Spotify verification",
+  "viewport": "1920x1080",
+  "errors": [],
+  "calls": [
+    [
+      "play",
+      "spotify:track:0123456789012345678901"
+    ],
+    [
+      "toggle"
+    ]
+  ]
+}
